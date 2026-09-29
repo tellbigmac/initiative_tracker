@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>D&amp;D Session &amp; Initiative Tracker v8</title>
+<title>D&amp;D Session &amp; Initiative Tracker v10</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <style>
 :root{--bg:#f3efe6;--card:#fffdf8;--ink:#2a2118;--mute:#7a6d5c;--line:#d9cfbc;--pc:#2f6f5e;--mon:#a3372b;--hi:#e9b949;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -139,12 +139,23 @@ if(!S.chars)S.chars=[]; if(!S.sessions)S.sessions=[];
 if(!S.chars.length&&S.party&&S.party.length){S.party.forEach(function(p){S.chars.push({id:++S.seq,player:"",name:p.name||"",className:"",species:"",level:null,ac:p.ac,max:p.max||p.hp,pp:null,mod:0,notes:""})})}
 var app=document.getElementById("app");
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function backupDatabase(){
+  var payload={app:"Initiative Tracker",schema:1,exported:new Date().toISOString(),build:"v11",state:S};
+  var blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
+  var url=URL.createObjectURL(blob),a=document.createElement("a"),d=new Date(),stamp=d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0");
+  a.href=url;a.download="initiative-tracker-backup-"+stamp+".json";document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(url)},1000);
+}
+function restoreDatabase(file){
+  if(!file)return;var r=new FileReader();r.onload=function(){try{var z=JSON.parse(r.result),state=z&&z.state?z.state:z;if(!state||typeof state!=="object"||!Array.isArray(state.party)||!Array.isArray(state.enc))throw new Error("This is not a valid Initiative Tracker backup.");if(!confirm("Restore this database? Current data on this device will be replaced."))return;S=state;save();ui.tab="c";ui.stat=null;render();alert("Database restored successfully.");}catch(e){alert("Restore failed: "+e.message)}};r.readAsText(file);
+}
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function num(v){var n=parseInt(v,10);return isNaN(n)?null:n}
 function get(a,id){return a.filter(function(x){return x.id==id})[0]}
 function val(v){return v==null?"":v}
 function order(){var p=S.cmb.filter(function(c){return c.init==null}).sort(function(a,b){return (a.t==="p"?0:1)-(b.t==="p"?0:1)||a.id-b.id});return p.concat(turns())}
-function turns(){return S.cmb.filter(function(c){return c.init!=null}).sort(function(a,b){return b.init-a.init||a.id-b.id})}
+function defaultTurns(){return S.cmb.filter(function(c){return c.init!=null}).sort(function(a,b){return b.init-a.init||((a.t==="p"?0:1)-(b.t==="p"?0:1))||a.id-b.id)}
+function turns(){var a=defaultTurns();if(!S.turnOrder||!S.turnOrder.length)return a;var pos={};S.turnOrder.forEach(function(id,i){pos[id]=i});return a.sort(function(x,y){var px=pos[x.id],py=pos[y.id];if(px!=null&&py!=null)return px-py;if(px!=null)return -1;if(py!=null)return 1;return 0})}
+function clearTurnOrder(){S.turnOrder=[]}
 function lib(){var m={};
   SEED.forEach(function(x){m[x[0].toLowerCase()]={n:x[0],ac:x[1],hp:x[2],mod:x[3],cr:x[4],u:0}});
   USER.forEach(function(x){m[x[0].toLowerCase()]={n:x[0],ac:x[1],hp:x[2],mod:x[3],cr:x[4],u:1}});
@@ -171,14 +182,14 @@ function row(c){
   +'<div class="stats"><label>AC '+inp("c","ac",i,val(c.ac),ro,1)+'</label>'
   +'<label>HP '+inp("c","hp",i,val(c.hp),' class="hpin'+bad+'"',1)+'/'+(c.max==null?"–":c.max)+'</label>'
   +'<button data-a="dmg" data-id="'+i+'" aria-label="Damage">−</button><button data-a="heal" data-id="'+i+'" aria-label="Heal">+</button>'
-  +'<button data-a="cond" data-id="'+i+'">Cond</button>'+(c.t==="m"&&c.init==null?'<button data-a="roll" data-id="'+i+'" aria-label="Roll initiative">🎲</button>':S.cur!=null&&c.init!=null?'<button data-a="edit" data-id="'+i+'" aria-label="'+(ed?'Lock row':'Edit row')+'">'+(ed?'✓':'✎')+'</button>':'<span class="sp"></span>')+'</div>'
+  +'<button data-a="cond" data-id="'+i+'">Cond</button>'+(c.init!=null?'<button data-a="turnup" data-id="'+i+'" title="Move earlier without changing initiative" aria-label="Move '+esc(c.name)+' earlier">▲</button><button data-a="turndown" data-id="'+i+'" title="Move later without changing initiative" aria-label="Move '+esc(c.name)+' later">▼</button>':'')+(c.t==="m"&&c.init==null?'<button data-a="roll" data-id="'+i+'" aria-label="Roll initiative">🎲</button>':S.cur!=null&&c.init!=null?'<button data-a="edit" data-id="'+i+'" aria-label="'+(ed?'Lock row':'Edit row')+'">'+(ed?'✓':'✎')+'</button>':'<span class="sp"></span>')+'</div>'
   +(cd.length?'<div class="chips">'+cd.map(function(x){return '<span>'+x+'</span>'}).join("")+'</div>':'')
   +(ui.cond[i]?'<div class="picker">'+CONDS.map(function(x){return '<button data-a="tog" data-id="'+i+'" data-x="'+x+'" class="'+(cd.indexOf(x)>=0?'on':'')+'">'+x+'</button>'}).join("")+'</div>':'')
   +'</li>';
 }
 function vCombat(){
   var o=order(),nx=S.enc.filter(function(e){return!e.ran})[0],pd=o.filter(function(c){return c.init==null}),rd=o.filter(function(c){return c.init!=null});
-  return '<div class="card" style="margin-bottom:10px;padding:8px 10px"><b>v9</b> · Session parties + encounter scaling · <span class="mute">'+esc(actMod())+'</span></div><div class="bar"><button data-a="addparty">Add party</button><button data-a="loadnext"'+(nx?'':' disabled')+'>'+(nx?'Load: '+esc(nx.name):'No encounter queued')+'</button><button data-a="rollall">🎲 Roll monsters</button><button data-a="addtog">'+(ui.add?'Close':'＋ Monster')+'</button></div>'
+  return '<div class="card" style="margin-bottom:10px;padding:8px 10px"><b>v10</b> · Turn-order overrides + session parties + encounter scaling · <span class="mute">'+esc(actMod())+'</span></div><div class="bar"><button data-a="addparty">Add party</button><button data-a="loadnext"'+(nx?'':' disabled')+'>'+(nx?'Load: '+esc(nx.name):'No encounter queued')+'</button><button data-a="rollall">🎲 Roll monsters</button><button data-a="addtog">'+(ui.add?'Close':'＋ Monster')+'</button></div>'
   +(ui.add?'<form class="add g4" data-form="one"><input name="name" placeholder="Name (type to search library)" required autocomplete="off"><div class="sug"></div><input name="init" type="number" inputmode="numeric" placeholder="Init"><input name="ac" type="number" inputmode="numeric" placeholder="AC"><input name="hp" type="number" inputmode="numeric" placeholder="HP"><input name="mod" type="number" placeholder="Init +">'
     +'<select name="t" style="grid-column:span 2"><option value="m">Monster</option><option value="p">Player</option></select><input name="qty" type="number" inputmode="numeric" placeholder="How many" style="grid-column:span 2"><small class="mute" style="grid-column:1/-1">Leave Init blank on a monster to roll it (d20 + Init +).</small>'+modSel()+SAVE+'<button class="primary">Add to combat</button></form>':'')
   +(pd.length?'<p class="mute" style="margin:4px 0">Needs initiative</p><ul class="pend">'+pd.map(row).join("")+'</ul>':'')
@@ -218,9 +229,9 @@ function allLib(){var a=[],seen={};function add(x,src,mod){var k=x[0].toLowerCas
 function vLibrary(){var list=allLib();return '<div class="sectiontitle"><h2>Monster Stat Block Library</h2><span class="mute">'+list.length+' monsters · '+Object.keys(STATBLOCKS).length+' full blocks</span></div><input id="libq" class="search" placeholder="Search monsters…" autocomplete="off"><div class="libgrid" id="libgrid">'+list.map(function(m){var full=statFor(m.n);return '<div class="card libitem" data-q="'+esc(m.n.toLowerCase())+'"><div class="librow"><div><h3>'+esc(m.n)+(full?' <span class="tag al">Full stat block</span>':'')+'</h3><div class="libstats">AC '+val(m.ac)+' · HP '+val(m.hp)+' · Init '+(m.mod>=0?'+':'')+val(m.mod)+' · CR '+val(m.cr)+'</div><div>'+m.sources.map(function(x){return '<span class="tag">'+esc(x)+'</span>'}).join('')+'</div></div><button data-a="quickmon" data-n="'+esc(m.n)+'">Add to combat</button></div>'+(full?'<details><summary><b>View stat block</b></summary>'+statHtml(m.n,false)+'</details>':'<p class="mute">Summary record only — full stat block has not been imported yet.</p>')+'</div>'}).join('')+'</div><p class="mute">Full module stat blocks retain their module provenance. Summary-only public records can still be used for initiative and encounter building; full public stat blocks will be added only from reusable public rules sources.</p>'}
 function render(){
   var t=[["c","Combat"],["p","Party"],["h","Characters"],["e","Encounters"],["m","Modules"],["s","Sessions"],["l","Library"]];
-  app.innerHTML='<div class="top"><div class="tabs">'+t.map(function(x){return '<button data-a="tab" data-x="'+x[0]+'" class="'+(ui.tab===x[0]?'on':'')+'">'+x[1]+'</button>'}).join("")+'</div>'
+  app.innerHTML='<div class="top"><div class="tabs">'+t.map(function(x){return '<button data-a="tab" data-x="'+x[0]+'" class="'+(ui.tab===x[0]?'on':'')+'">'+x[1]+'</button>'}).join("")+'<button data-a="backup" title="Download a portable JSON backup">Backup</button><button data-a="restore" title="Restore a portable JSON backup">Restore</button><input id="restorefile" type="file" accept="application/json,.json" style="display:none"></div>'
    +(ui.tab==="c"?'<button class="primary next" data-a="next">Next turn</button><div class="round">Round '+S.round+'</div><label class="amtb">HP ±<input id="amt" type="number" inputmode="numeric" value="'+ui.amt+'"></label>':'')+'</div>'
-   +(ui.tab==="c"?vCombat():ui.tab==="p"?vParty():ui.tab==="h"?vCharacters():ui.tab==="e"?vEnc():ui.tab==="m"?vModules():ui.tab==="s"?vSessions():vLibrary())+(ui.stat?'<div class="card" style="margin-top:10px">'+statHtml(ui.stat,true)+'</div>':'')+'<div style="text-align:center;margin-top:28px;font:12px Arial,sans-serif;color:var(--mute);opacity:.7">Build 2026-09-28 10:22 PM PT · v9</div>';
+   +(ui.tab==="c"?vCombat():ui.tab==="p"?vParty():ui.tab==="h"?vCharacters():ui.tab==="e"?vEnc():ui.tab==="m"?vModules():ui.tab==="s"?vSessions():vLibrary())+(ui.stat?'<div class="card" style="margin-top:10px">'+statHtml(ui.stat,true)+'</div>':'')+'<div style="text-align:center;margin-top:28px;font:12px Arial,sans-serif;color:var(--mute);opacity:.7">Build 2026-09-28 10:52 PM PT · v11 · Local database + portable backup</div>';
   var f=ui.focus&&app.querySelector(".pend .ini");ui.focus=false;if(f)f.focus();
   save();
 }
@@ -235,6 +246,8 @@ app.onclick=function(e){
   var b=e.target.closest("[data-a]");if(!b)return;
   if(b.dataset.a==="pick"){var pf=b.closest("form"),d=b.dataset;pf.elements["name"].value=d.n;pf.elements["ac"].value=d.ac;pf.elements["hp"].value=d.hp;pf.elements["mod"].value=d.mod;b.parentNode.innerHTML="";return}
   var a=b.dataset.a,id=b.dataset.id,x=b.dataset.x,c,o,i,prev=pc;pc=null;
+  if(a==="backup"){backupDatabase();return}
+  if(a==="restore"){var rf=document.getElementById("restorefile");if(rf)rf.click();return}
   var amt=ui.tab==="c"&&document.getElementById("amt")?num(document.getElementById("amt").value)||0:0;
   if(document.getElementById("amt"))ui.amt=amt;
   if(a==="tab")ui.tab=x;
@@ -253,15 +266,16 @@ app.onclick=function(e){
   else if(a==="quickmon"){var mm=allLib().filter(function(z){return z.n===b.dataset.n})[0];if(mm)S.cmb.push({id:++S.seq,t:"m",name:mm.n,ac:mm.ac,hp:mm.hp,max:mm.hp,mod:mm.mod||0,init:null,conds:[]});ui.tab="c"}
   else if(a==="next"){o=turns();if(!o.length)return;i=o.findIndex(function(c){return c.id==S.cur});
     if(i<0)S.cur=o[0].id;else if(i+1>=o.length){S.cur=o[0].id;S.round++}else S.cur=o[i+1].id}
+  else if(a==="turnup"||a==="turndown"){o=turns();i=o.findIndex(function(z){return z.id==id});var j=a==="turnup"?i-1:i+1;if(j>=0&&j<o.length){var tmp=o[i];o[i]=o[j];o[j]=tmp;S.turnOrder=o.map(function(z){return z.id})}}
   else if(a==="edit")ui.edit[id]=!ui.edit[id];
-  else if(a==="rollall")S.cmb.forEach(function(c){if(c.t==="m"&&c.init==null)c.init=d20(c.mod)});
-  else if(a==="roll"){c=get(S.cmb,id);c.init=d20(c.mod)}
+  else if(a==="rollall"){clearTurnOrder();S.cmb.forEach(function(c){if(c.t==="m"&&c.init==null)c.init=d20(c.mod)})}
+  else if(a==="roll"){clearTurnOrder();c=get(S.cmb,id);c.init=d20(c.mod)}
   else if(a==="addtog")ui.add=!ui.add;
   else if(a==="addparty"){ui.focus=true;S.party.forEach(function(p){if(!S.cmb.some(function(c){return c.pid==p.id}))S.cmb.push({id:++S.seq,pid:p.id,t:"p",name:p.name,ac:p.ac,hp:p.hp,max:p.max,init:null,conds:[]})})}
   else if(a==="loadnext"||a==="run"){var en=a==="run"?get(S.enc,id):S.enc.filter(function(e){var ss=ensureSession();return !e.ran&&(e.session==null||e.session===ss.id)})[0];
     if(!en)return;var ss=ensureSession();ss.status="active";en.monsters.forEach(function(m){S.cmb.push({id:++S.seq,t:"m",name:m.name,ac:m.ac,hp:m.max,max:m.max,mod:m.mod||0,init:null,conds:[]})});en.ran=true;ui.tab="c"}
-  else if(a==="restart"){if(prev!=="restart")pc="restart";else{S.cmb.forEach(function(c){c.init=null;c.conds=[];if(c.max!=null)setHp(c,c.max)});S.cur=null;S.round=1;ui.focus=true;ui.edit={}}}
-  else if(a==="end"){if(prev!=="end"){pc="end"}else{S.cmb=[];S.cur=null;S.round=1}}
+  else if(a==="restart"){if(prev!=="restart")pc="restart";else{S.cmb.forEach(function(c){c.init=null;c.conds=[];if(c.max!=null)setHp(c,c.max)});S.cur=null;S.round=1;clearTurnOrder();ui.focus=true;ui.edit={}}}
+  else if(a==="end"){if(prev!=="end"){pc="end"}else{S.cmb=[];S.cur=null;S.round=1;clearTurnOrder()}}
   else if(a==="dmg"){c=get(S.cmb,id);setHp(c,Math.max(0,(c.hp||0)-amt))}
   else if(a==="heal"){c=get(S.cmb,id);var h=(c.hp||0)+amt;setHp(c,c.max!=null?Math.min(c.max,h):h)}
   else if(a==="cond")ui.cond[id]=!ui.cond[id];
@@ -279,14 +293,14 @@ app.onclick=function(e){
   render();
 };
 app.onchange=function(e){
-  var t=e.target;if(t.id==="amt"){ui.amt=num(t.value)||0;return}
+  var t=e.target;if(t.id==="restorefile"){restoreDatabase(t.files&&t.files[0]);t.value="";return}if(t.id==="amt"){ui.amt=num(t.value)||0;return}
   if(t.dataset.s==="mod"){S.mod=t.value;var ss=ensureSession();ss.module=S.mod;render();return} if(t.dataset.s==="sessional"){var ss=ensureSession();ss.al=t.checked;save();render();return}
   if(t.dataset.s==="scale"){var en=get(S.enc,t.dataset.id);scaleEncounter(en,t.value);save();render();return}
   var f=t.dataset.f;if(!f)return;
   var s=t.dataset.s,id=t.dataset.id,o=s==="c"?get(S.cmb,id):s==="p"?get(S.party,id):s==="e"?get(S.enc,id):s==="char"?get(S.chars,id):s==="sess"?get(S.sessions,id):get(get(S.enc,t.dataset.e).monsters,id);
   var textFields={name:1,player:1,className:1,species:1,date:1,notes:1};var v=textFields[f]?t.value.trim():num(t.value);
   if(s==="c"&&f==="hp")setHp(o,v);else o[f]=v;
-  save();if(s==="c"&&f==="init"){ui.dirty=true;setTimeout(flush,200)}
+  save();if(s==="c"&&f==="init"){clearTurnOrder();ui.dirty=true;setTimeout(flush,200)}
 };
 app.onsubmit=function(e){
   e.preventDefault();var f=e.target,k=f.dataset.form,v=function(n){return f.elements[n].value};
