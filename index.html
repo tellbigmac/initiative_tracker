@@ -105,7 +105,7 @@ li.cb .sp{width:34px;flex:none}
 <main id="app"><div class="top"><div class="tabs"><button class="on">Combat</button><button>Party</button><button>Encounters</button><button>Modules</button><button>Sessions</button><button>Library</button></div></div><div class="card"><h2 style="margin:0 0 8px">Initiative Tracker</h2><p style="margin:0">Starting combat view…</p></div></main><div id="booterr" style="display:none;padding:16px;background:#fee;color:#700;font-family:system-ui;white-space:pre-wrap"></div>
 <script>
 window.onerror=function(msg,src,line,col,err){var x=document.getElementById("booterr");if(x){x.style.display="block";x.textContent="Application error: "+msg+" (line "+line+")";} return false;};
-var KEY="init-tracker-v4",S={party:[],chars:[],enc:[],cmb:[],cur:null,round:1,seq:1,lib:[],sessions:[],session:null,mod:"DDAL07-04 — A Walk in the Park"};
+var KEY="init-tracker-v4",BUILD="v11.1",S={party:[],chars:[],enc:[],cmb:[],cur:null,round:1,seq:1,lib:[],sessions:[],session:null,mod:"DDAL07-04 — A Walk in the Park"};
 var ui={tab:"c",open:{},cond:{},edit:{},confirm:null,amt:1,stat:null},pc=null;
 var CONDS=["Blinded","Charmed","Concentrating","Deafened","Frightened","Grappled","Incapacitated","Invisible","Paralyzed","Petrified","Poisoned","Prone","Restrained","Stunned","Unconscious"];
 // Monster library: [name, AC, avg HP, init modifier, CR]. SEED = SRD 5.1 starter list; USER = entries added from stat-block photos.
@@ -139,15 +139,6 @@ if(!S.chars)S.chars=[]; if(!S.sessions)S.sessions=[];
 if(!S.chars.length&&S.party&&S.party.length){S.party.forEach(function(p){S.chars.push({id:++S.seq,player:"",name:p.name||"",className:"",species:"",level:null,ac:p.ac,max:p.max||p.hp,pp:null,mod:0,notes:""})})}
 var app=document.getElementById("app");
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
-function backupDatabase(){
-  var payload={app:"Initiative Tracker",schema:1,exported:new Date().toISOString(),build:"v11",state:S};
-  var blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
-  var url=URL.createObjectURL(blob),a=document.createElement("a"),d=new Date(),stamp=d.getFullYear()+String(d.getMonth()+1).padStart(2,"0")+String(d.getDate()).padStart(2,"0");
-  a.href=url;a.download="initiative-tracker-backup-"+stamp+".json";document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(url)},1000);
-}
-function restoreDatabase(file){
-  if(!file)return;var r=new FileReader();r.onload=function(){try{var z=JSON.parse(r.result),state=z&&z.state?z.state:z;if(!state||typeof state!=="object"||!Array.isArray(state.party)||!Array.isArray(state.enc))throw new Error("This is not a valid Initiative Tracker backup.");if(!confirm("Restore this database? Current data on this device will be replaced."))return;S=state;save();ui.tab="c";ui.stat=null;render();alert("Database restored successfully.");}catch(e){alert("Restore failed: "+e.message)}};r.readAsText(file);
-}
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function num(v){var n=parseInt(v,10);return isNaN(n)?null:n}
 function get(a,id){return a.filter(function(x){return x.id==id})[0]}
@@ -229,9 +220,9 @@ function allLib(){var a=[],seen={};function add(x,src,mod){var k=x[0].toLowerCas
 function vLibrary(){var list=allLib();return '<div class="sectiontitle"><h2>Monster Stat Block Library</h2><span class="mute">'+list.length+' monsters · '+Object.keys(STATBLOCKS).length+' full blocks</span></div><input id="libq" class="search" placeholder="Search monsters…" autocomplete="off"><div class="libgrid" id="libgrid">'+list.map(function(m){var full=statFor(m.n);return '<div class="card libitem" data-q="'+esc(m.n.toLowerCase())+'"><div class="librow"><div><h3>'+esc(m.n)+(full?' <span class="tag al">Full stat block</span>':'')+'</h3><div class="libstats">AC '+val(m.ac)+' · HP '+val(m.hp)+' · Init '+(m.mod>=0?'+':'')+val(m.mod)+' · CR '+val(m.cr)+'</div><div>'+m.sources.map(function(x){return '<span class="tag">'+esc(x)+'</span>'}).join('')+'</div></div><button data-a="quickmon" data-n="'+esc(m.n)+'">Add to combat</button></div>'+(full?'<details><summary><b>View stat block</b></summary>'+statHtml(m.n,false)+'</details>':'<p class="mute">Summary record only — full stat block has not been imported yet.</p>')+'</div>'}).join('')+'</div><p class="mute">Full module stat blocks retain their module provenance. Summary-only public records can still be used for initiative and encounter building; full public stat blocks will be added only from reusable public rules sources.</p>'}
 function render(){
   var t=[["c","Combat"],["p","Party"],["h","Characters"],["e","Encounters"],["m","Modules"],["s","Sessions"],["l","Library"]];
-  app.innerHTML='<div class="top"><div class="tabs">'+t.map(function(x){return '<button data-a="tab" data-x="'+x[0]+'" class="'+(ui.tab===x[0]?'on':'')+'">'+x[1]+'</button>'}).join("")+'<button data-a="backup" title="Download a portable JSON backup">Backup</button><button data-a="restore" title="Restore a portable JSON backup">Restore</button><input id="restorefile" type="file" accept="application/json,.json" style="display:none"></div>'
+  app.innerHTML='<div class="top"><div class="tabs">'+t.map(function(x){return '<button data-a="tab" data-x="'+x[0]+'" class="'+(ui.tab===x[0]?'on':'')+'">'+x[1]+'</button>'}).join("")+'</div><div style="display:flex;gap:6px;margin-left:auto"><button data-a="backup">Backup</button><button data-a="restore">Restore</button><input id="restorefile" type="file" accept="application/json,.json" style="display:none"></div>'
    +(ui.tab==="c"?'<button class="primary next" data-a="next">Next turn</button><div class="round">Round '+S.round+'</div><label class="amtb">HP ±<input id="amt" type="number" inputmode="numeric" value="'+ui.amt+'"></label>':'')+'</div>'
-   +(ui.tab==="c"?vCombat():ui.tab==="p"?vParty():ui.tab==="h"?vCharacters():ui.tab==="e"?vEnc():ui.tab==="m"?vModules():ui.tab==="s"?vSessions():vLibrary())+(ui.stat?'<div class="card" style="margin-top:10px">'+statHtml(ui.stat,true)+'</div>':'')+'<div style="text-align:center;margin-top:28px;font:12px Arial,sans-serif;color:var(--mute);opacity:.7">Build 2026-09-28 10:52 PM PT · v11 · Local database + portable backup</div>';
+   +(ui.tab==="c"?vCombat():ui.tab==="p"?vParty():ui.tab==="h"?vCharacters():ui.tab==="e"?vEnc():ui.tab==="m"?vModules():ui.tab==="s"?vSessions():vLibrary())+(ui.stat?'<div class="card" style="margin-top:10px">'+statHtml(ui.stat,true)+'</div>':'')+'<div style="text-align:center;margin-top:28px;font:12px Arial,sans-serif;color:var(--mute);opacity:.7">Build 2026-09-28 10:49 PM PT · v11.1</div>';
   var f=ui.focus&&app.querySelector(".pend .ini");ui.focus=false;if(f)f.focus();
   save();
 }
@@ -246,11 +237,11 @@ app.onclick=function(e){
   var b=e.target.closest("[data-a]");if(!b)return;
   if(b.dataset.a==="pick"){var pf=b.closest("form"),d=b.dataset;pf.elements["name"].value=d.n;pf.elements["ac"].value=d.ac;pf.elements["hp"].value=d.hp;pf.elements["mod"].value=d.mod;b.parentNode.innerHTML="";return}
   var a=b.dataset.a,id=b.dataset.id,x=b.dataset.x,c,o,i,prev=pc;pc=null;
-  if(a==="backup"){backupDatabase();return}
-  if(a==="restore"){var rf=document.getElementById("restorefile");if(rf)rf.click();return}
   var amt=ui.tab==="c"&&document.getElementById("amt")?num(document.getElementById("amt").value)||0:0;
   if(document.getElementById("amt"))ui.amt=amt;
-  if(a==="tab")ui.tab=x;
+  if(a==="backup"){backupDatabase();return}
+  else if(a==="restore"){var rf=document.getElementById("restorefile");if(rf)rf.click();return}
+  else if(a==="tab")ui.tab=x;
   else if(a==="setmod"){S.mod=b.dataset.n;var ss=ensureSession();ss.module=S.mod;var mm=findMod(S.mod);ss.al=mm?!!mm.al:ss.al}
   else if(a==="prepmod"){var mm=findMod(b.dataset.n);S.mod=mm.n;loadModuleEncounters(mm);ui.tab="e"}
   else if(a==="newsession"){var mm=findMod(actMod()),sid=++S.seq;S.sessions.push({id:sid,name:(mm?mm.code:"Session")+" — Session "+(S.sessions.length+1),module:actMod(),al:mm?!!mm.al:false,status:"planned",date:today(),created:new Date().toISOString(),roster:[]});S.session=sid}
@@ -293,7 +284,7 @@ app.onclick=function(e){
   render();
 };
 app.onchange=function(e){
-  var t=e.target;if(t.id==="restorefile"){restoreDatabase(t.files&&t.files[0]);t.value="";return}if(t.id==="amt"){ui.amt=num(t.value)||0;return}
+  var t=e.target;if(t.id==="amt"){ui.amt=num(t.value)||0;return}
   if(t.dataset.s==="mod"){S.mod=t.value;var ss=ensureSession();ss.module=S.mod;render();return} if(t.dataset.s==="sessional"){var ss=ensureSession();ss.al=t.checked;save();render();return}
   if(t.dataset.s==="scale"){var en=get(S.enc,t.dataset.id);scaleEncounter(en,t.value);save();render();return}
   var f=t.dataset.f;if(!f)return;
@@ -313,6 +304,24 @@ app.onsubmit=function(e){
     for(var i=1;i<=q;i++)en.monsters.push({id:++S.seq,name:q>1?n+" "+i:n,ac:num(v("ac")),max:hp,mod:num(v("mod"))||0});ui.open[en.id]=true;if(f.elements.save.checked)saveLib(n,num(v("ac")),hp,num(v("mod"))||0)}
   render();
 };
+
+function backupDatabase(){
+  try{
+    save();
+    var payload={format:"initiative-tracker-backup",version:1,build:BUILD,exportedAt:new Date().toISOString(),storageKey:KEY,data:S};
+    var blob=new Blob([JSON.stringify(payload,null,2)],{type:"application/json"});
+    var url=URL.createObjectURL(blob),a=document.createElement("a"),d=new Date(),pad=function(n){return n<10?"0"+n:n};
+    a.href=url;a.download="initiative-tracker-backup-"+d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate())+".json";
+    document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(url)},1000);
+  }catch(e){alert("Backup failed: "+e.message)}
+}
+function restoreDatabaseFile(file){
+  if(!file)return;var r=new FileReader();
+  r.onload=function(){try{var p=JSON.parse(r.result),data=p&&p.format==="initiative-tracker-backup"?p.data:p;if(!data||typeof data!=="object"||!Array.isArray(data.cmb)||!Array.isArray(data.enc))throw new Error("This is not a valid Initiative Tracker backup.");if(!confirm("Restore this backup? This will replace the Initiative Tracker data stored in this browser."))return;S=data;if(!S.party)S.party=[];if(!S.chars)S.chars=[];if(!S.enc)S.enc=[];if(!S.cmb)S.cmb=[];if(!S.lib)S.lib=[];if(!S.sessions)S.sessions=[];if(!S.seq)S.seq=1;save();ui.tab="c";ui.stat=null;render();alert("Database restored.")}catch(e){alert("Restore failed: "+e.message)}};
+  r.onerror=function(){alert("Restore failed: the backup file could not be read.")};r.readAsText(file);
+}
+app.addEventListener("change",function(e){if(e.target&&e.target.id==="restorefile"){restoreDatabaseFile(e.target.files&&e.target.files[0]);e.target.value=""}});
+
 function showFatal(e){
   var a=document.getElementById("app"),x=document.getElementById("booterr");
   var msg=(e&&e.message)?e.message:String(e||"Unknown startup error");
