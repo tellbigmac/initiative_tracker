@@ -103,10 +103,15 @@ li.cb .sp{width:34px;flex:none}
 </head>
 <body>
 <main id="app"><div class="top"><div class="tabs"><button class="on">Combat</button><button>Party</button><button>Encounters</button><button>Modules</button><button>Sessions</button><button>Library</button></div></div><div class="card"><h2 style="margin:0 0 8px">Initiative Tracker</h2><p style="margin:0">Starting combat view…</p></div></main><div id="booterr" style="display:none;padding:16px;background:#fee;color:#700;font-family:system-ui;white-space:pre-wrap"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 window.onerror=function(msg,src,line,col,err){var x=document.getElementById("booterr");if(x){x.style.display="block";x.textContent="Application error: "+msg+" (line "+line+")";} return false;};
-var KEY="init-tracker-v4",BUILD="v11.1",S={party:[],chars:[],enc:[],cmb:[],cur:null,round:1,seq:1,lib:[],sessions:[],session:null,mod:"DDAL07-04 — A Walk in the Park"};
+var KEY="init-tracker-v4",BUILD="v13",S={party:[],chars:[],enc:[],cmb:[],cur:null,round:1,seq:1,lib:[],sessions:[],session:null,mod:"DDAL07-04 — A Walk in the Park"};
 var ui={tab:"c",open:{},cond:{},edit:{},confirm:null,amt:1,stat:null},pc=null;
+var SUPABASE_URL="https://nqrpnvomypbpfzlyrgye.supabase.co";
+var SUPABASE_KEY="sb_publishable_1-IiuOcdiE9NH5lcN3AYbg_pUGwhtfL";
+var cloudClient=null,cloudUser=null,cloudReady=false,cloudTimer=null,cloudStatus="Signed out";
+try{if(window.supabase&&window.supabase.createClient)cloudClient=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY)}catch(e){cloudStatus="Cloud unavailable"}
 var CONDS=["Blinded","Charmed","Concentrating","Deafened","Frightened","Grappled","Incapacitated","Invisible","Paralyzed","Petrified","Poisoned","Prone","Restrained","Stunned","Unconscious"];
 // Monster library: [name, AC, avg HP, init modifier, CR]. SEED = SRD 5.1 starter list; USER = entries added from stat-block photos.
 var SEED=[["Acolyte",10,9,0,"1/4"],["Ankheg",14,39,0,2],["Assassin",15,78,3,8],["Bandit",12,11,1,"1/8"],["Basilisk",15,52,-1,3],["Beholder",18,180,2,13],["Black Bear",11,19,0,"1/2"],["Brown Bear",11,34,0,1],["Bugbear",16,27,2,1],["Bulette",17,94,0,5],["Carrion Crawler",13,51,1,2],["Cockatrice",11,27,1,"1/2"],["Commoner",10,4,0,0],["Cultist",12,9,1,"1/8"],["Dire Wolf",14,37,2,1],["Displacer Beast",13,85,2,3],["Doppelganger",14,52,4,3],["Ettin",12,85,-1,4],["Gargoyle",15,52,0,2],["Gelatinous Cube",6,84,-4,2],["Ghast",13,36,3,2],["Ghoul",12,22,2,1],["Giant Boar",12,42,0,2],["Giant Rat",12,7,2,"1/8"],["Giant Spider",14,26,3,1],["Gnoll",15,22,1,"1/2"],["Goblin",15,7,2,"1/4"],["Green Dragon (Young)",18,136,1,8],["Guard",16,11,1,"1/8"],["Harpy",11,38,1,1],["Hill Giant",13,105,-1,5],["Hobgoblin",18,11,1,"1/2"],["Imp",13,10,3,1],["Knight",18,52,0,3],["Kobold",12,5,2,"1/8"],["Lich",17,135,3,21],["Lizardfolk",15,22,0,"1/2"],["Mage",12,40,2,6],["Mind Flayer",15,71,1,7],["Minotaur",14,76,0,3],["Mummy",11,58,-1,3],["Noble",15,9,1,"1/8"],["Ogre",11,59,-1,2],["Orc",13,15,1,"1/2"],["Owlbear",13,59,1,3],["Priest",13,27,0,2],["Quasit",13,7,3,1],["Red Dragon (Adult)",19,256,0,17],["Red Dragon (Young)",18,178,0,10],["Rust Monster",14,27,1,"1/2"],["Scout",13,16,2,"1/2"],["Skeleton",13,13,2,"1/4"],["Specter",12,22,2,1],["Thug",11,32,0,"1/2"],["Troll",15,84,1,5],["Vampire Spawn",15,82,3,5],["Veteran",17,58,1,3],["Werewolf",11,58,1,3],["Wight",14,45,2,3],["Wolf",13,11,2,"1/4"],["Wraith",13,67,3,5],["Zombie",8,22,-2,"1/4"]];
@@ -138,7 +143,14 @@ if(!S.chars)S.chars=[]; if(!S.sessions)S.sessions=[];
 // One-time migration: preserve older saved Party entries as reusable character records.
 if(!S.chars.length&&S.party&&S.party.length){S.party.forEach(function(p){S.chars.push({id:++S.seq,player:"",name:p.name||"",className:"",species:"",level:null,ac:p.ac,max:p.max||p.hp,pp:null,mod:0,notes:""})})}
 var app=document.getElementById("app");
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){} if(cloudReady&&cloudUser)scheduleCloudSave()}
+function scheduleCloudSave(){clearTimeout(cloudTimer);cloudStatus="Saving…";cloudTimer=setTimeout(cloudSave,900)}
+async function cloudSave(){if(!cloudClient||!cloudUser||!cloudReady)return;try{cloudStatus="Saving…";var r=await cloudClient.from("tracker_state").upsert({user_id:cloudUser.id,data:S,updated_at:new Date().toISOString()},{onConflict:"user_id"});if(r.error)throw r.error;cloudStatus="☁ Synced"}catch(e){cloudStatus="Cloud error";console.error(e)}}
+async function cloudLoad(){if(!cloudClient||!cloudUser)return;cloudStatus="Loading cloud…";try{var r=await cloudClient.from("tracker_state").select("data,updated_at").eq("user_id",cloudUser.id).maybeSingle();if(r.error)throw r.error;if(r.data&&r.data.data){S=r.data.data;normalizeState();localStorage.setItem(KEY,JSON.stringify(S));cloudReady=true;cloudStatus="☁ Synced";ui.tab="home";render()}else{cloudReady=true;cloudStatus="Creating cloud database…";await cloudSave();render()}}catch(e){cloudReady=false;cloudStatus="Cloud error";console.error(e);render()}}
+function normalizeState(){if(!S.party)S.party=[];if(!S.chars)S.chars=[];if(!S.enc)S.enc=[];if(!S.cmb)S.cmb=[];if(!S.lib)S.lib=[];if(!S.sessions)S.sessions=[];if(!S.seq)S.seq=1}
+async function cloudSignIn(email){if(!cloudClient)return alert("Cloud connection is unavailable.");if(!email)return alert("Enter your email address.");cloudStatus="Sending sign-in link…";render();var r=await cloudClient.auth.signInWithOtp({email:email,options:{emailRedirectTo:"https://tellbigmac.github.io/initiative-tracker/"}});if(r.error){cloudStatus="Sign-in error";render();alert(r.error.message)}else{cloudStatus="Check your email for the sign-in link";render();alert("Sign-in link sent. Open the email link to connect this device.")}}
+async function cloudSignOut(){if(cloudClient)await cloudClient.auth.signOut();cloudUser=null;cloudReady=false;cloudStatus="Signed out";render()}
+async function initCloud(){if(!cloudClient)return;var r=await cloudClient.auth.getSession();var ses=r.data&&r.data.session;if(ses){cloudUser=ses.user;await cloudLoad()}cloudClient.auth.onAuthStateChange(function(ev,session){setTimeout(async function(){var u=session&&session.user;if(u&&(!cloudUser||cloudUser.id!==u.id)){cloudUser=u;await cloudLoad()}else if(!u){cloudUser=null;cloudReady=false;cloudStatus="Signed out";render()}},0)})}
 function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
 function num(v){var n=parseInt(v,10);return isNaN(n)?null:n}
 function get(a,id){return a.filter(function(x){return x.id==id})[0]}
@@ -218,11 +230,23 @@ function vSessions(){var cur=ensureSession();return '<div class="sectiontitle"><
 function vModules(){var a=actMod();return '<div class="sectiontitle"><h2>Module Library</h2><span class="mute">'+MODS.length+' modules</span></div><div class="modgrid">'+MODS.map(function(m){return '<div class="card '+(m.n===a?'activecard':'')+'"><h3>'+esc(m.n)+'</h3><p><span class="tag">'+esc(m.series||'')+(m.part?' · Part '+m.part:'')+'</span> '+(m.al?'<span class="tag al">Adventurers League</span>':'')+'</p><p class="mute">Tier '+val(m.tier)+' · Levels '+esc(m.levels||'—')+(m.apl?' · APL '+m.apl:'')+(m.hours?' · '+m.hours+' hours':'')+'</p>'+(m.summary?'<p>'+esc(m.summary)+'</p>':'')+(m.parts?'<p class="mute">'+m.parts.map(function(x){return esc(x)}).join(' · ')+'</p>':'')+'<p class="mute">'+(m.m||[]).length+' linked monster records'+(m.enc?' · '+m.enc.length+' prepared encounters':'')+'</p><div class="ebar"><button data-a="setmod" data-n="'+esc(m.n)+'">'+(m.n===a?'Selected':'Use module')+'</button>'+(m.enc?'<button class="primary" data-a="prepmod" data-n="'+esc(m.n)+'">Prepare encounters</button>':'')+'</div></div>'}).join('')+'</div>'}
 function allLib(){var a=[],seen={};function add(x,src,mod){var k=x[0].toLowerCase();if(!seen[k]){seen[k]={n:x[0],ac:x[1],hp:x[2],mod:x[3],cr:x[4],sources:[]};a.push(seen[k])}seen[k].sources.push(src+(mod?' · '+mod:''))}SEED.forEach(function(x){add(x,'Public/SRD')});(S.lib||[]).forEach(function(x){add([x.n,x.ac,x.hp,x.mod,x.cr],'My Library')});MODS.forEach(function(m){(m.m||[]).forEach(function(x){add(x,'Module',m.code)})});return a.sort(function(a,b){return a.n.localeCompare(b.n)})}
 function vLibrary(){var list=allLib();return '<div class="sectiontitle"><h2>Monster Stat Block Library</h2><span class="mute">'+list.length+' monsters · '+Object.keys(STATBLOCKS).length+' full blocks</span></div><input id="libq" class="search" placeholder="Search monsters…" autocomplete="off"><div class="libgrid" id="libgrid">'+list.map(function(m){var full=statFor(m.n);return '<div class="card libitem" data-q="'+esc(m.n.toLowerCase())+'"><div class="librow"><div><h3>'+esc(m.n)+(full?' <span class="tag al">Full stat block</span>':'')+'</h3><div class="libstats">AC '+val(m.ac)+' · HP '+val(m.hp)+' · Init '+(m.mod>=0?'+':'')+val(m.mod)+' · CR '+val(m.cr)+'</div><div>'+m.sources.map(function(x){return '<span class="tag">'+esc(x)+'</span>'}).join('')+'</div></div><button data-a="quickmon" data-n="'+esc(m.n)+'">Add to combat</button></div>'+(full?'<details><summary><b>View stat block</b></summary>'+statHtml(m.n,false)+'</details>':'<p class="mute">Summary record only — full stat block has not been imported yet.</p>')+'</div>'}).join('')+'</div><p class="mute">Full module stat blocks retain their module provenance. Summary-only public records can still be used for initiative and encounter building; full public stat blocks will be added only from reusable public rules sources.</p>'}
+
+function vHome(){
+  var ss=ensureSession(), roster=sessionRoster(ss), mm=findMod(ss.module||actMod());
+  return '<div class="sectiontitle"><h2>Initiative Tracker</h2><span class="mute">Home</span></div>'
+    +'<div class="modgrid">'
+    +'<div class="card"><h3>Current Session</h3><p><b>'+esc(ss.name||"Unnamed session")+'</b></p><p class="mute">'+esc(ss.date||"Undated")+' · '+esc(ss.module||"No module selected")+'</p><p>'+roster.length+' characters · APL '+val(calcAPL(roster))+' · '+partyStrength(ss)+(ss.al?' · <span class="tag al">AL</span>':'')+'</p><div class="ebar"><button class="primary" data-a="tab" data-x="s">Sessions</button><button data-a="tab" data-x="p">Party</button></div></div>'
+    +'<div class="card"><h3>Run Game</h3><p class="mute">Prepare or resume combat for the current session.</p><div class="ebar"><button class="primary" data-a="tab" data-x="c">Combat</button><button data-a="tab" data-x="e">Encounters</button></div></div>'
+    +'<div class="card"><h3>Libraries</h3><p class="mute">Reusable characters, modules, and monster stat blocks.</p><div class="ebar"><button data-a="tab" data-x="h">Characters</button><button data-a="tab" data-x="m">Modules</button><button data-a="tab" data-x="l">Monsters</button></div></div>'
+    +'<div class="card"><h3>Cloud Database</h3><p><b>'+esc(cloudStatus)+'</b></p>'+(cloudUser?'<p class="mute">Signed in as '+esc(cloudUser.email||"user")+'. Changes sync automatically across signed-in devices.</p><div class="ebar"><button data-a="cloudsave">Sync now</button><button data-a="cloudout">Sign out</button></div>':'<p class="mute">Sign in on each device to use the same Supabase database.</p><form data-form="cloud"><input name="email" type="email" autocomplete="email" placeholder="Email address" required><button class="primary" type="submit">Email sign-in link</button></form>')+'</div>'
+    +'<div class="card"><h3>Backup / Restore</h3><p class="mute">Portable JSON backup remains available for disaster recovery.</p><div class="ebar"><button data-a="backup">Backup</button><button data-a="restore">Restore</button></div></div>'
+    +'</div>';
+}
 function render(){
-  var t=[["c","Combat"],["p","Party"],["h","Characters"],["e","Encounters"],["m","Modules"],["s","Sessions"],["l","Library"]];
-  app.innerHTML='<div class="top"><div class="tabs">'+t.map(function(x){return '<button data-a="tab" data-x="'+x[0]+'" class="'+(ui.tab===x[0]?'on':'')+'">'+x[1]+'</button>'}).join("")+'</div><div style="display:flex;gap:6px;margin-left:auto"><button data-a="backup">Backup</button><button data-a="restore">Restore</button><input id="restorefile" type="file" accept="application/json,.json" style="display:none"></div>'
+  var t=[["home","Home"],["c","Combat"],["p","Party"],["h","Characters"],["e","Encounters"],["m","Modules"],["s","Sessions"],["l","Library"]];
+  app.innerHTML='<div class="top"><div class="tabs">'+t.map(function(x){return '<button data-a="tab" data-x="'+x[0]+'" class="'+(ui.tab===x[0]?'on':'')+'">'+x[1]+'</button>'}).join("")+'</div><div style="display:flex;gap:6px;margin-left:auto;align-items:center"><span class="mute" style="font-size:12px">'+esc(cloudStatus)+'</span><button data-a="backup">Backup</button><button data-a="restore">Restore</button><input id="restorefile" type="file" accept="application/json,.json" style="display:none"></div>'
    +(ui.tab==="c"?'<button class="primary next" data-a="next">Next turn</button><div class="round">Round '+S.round+'</div><label class="amtb">HP ±<input id="amt" type="number" inputmode="numeric" value="'+ui.amt+'"></label>':'')+'</div>'
-   +(ui.tab==="c"?vCombat():ui.tab==="p"?vParty():ui.tab==="h"?vCharacters():ui.tab==="e"?vEnc():ui.tab==="m"?vModules():ui.tab==="s"?vSessions():vLibrary())+(ui.stat?'<div class="card" style="margin-top:10px">'+statHtml(ui.stat,true)+'</div>':'')+'<div style="text-align:center;margin-top:28px;font:12px Arial,sans-serif;color:var(--mute);opacity:.7">Build 2026-09-28 10:49 PM PT · v11.1</div>';
+   +(ui.tab==="home"?vHome():ui.tab==="c"?vCombat():ui.tab==="p"?vParty():ui.tab==="h"?vCharacters():ui.tab==="e"?vEnc():ui.tab==="m"?vModules():ui.tab==="s"?vSessions():vLibrary())+(ui.stat?'<div class="card" style="margin-top:10px">'+statHtml(ui.stat,true)+'</div>':'')+'<div style="text-align:center;margin-top:28px;font:12px Arial,sans-serif;color:var(--mute);opacity:.7">Build 2026-09-29 6:30 AM PT · v13 · Supabase cloud sync</div>';
   var f=ui.focus&&app.querySelector(".pend .ini");ui.focus=false;if(f)f.focus();
   save();
 }
@@ -240,6 +264,8 @@ app.onclick=function(e){
   var amt=ui.tab==="c"&&document.getElementById("amt")?num(document.getElementById("amt").value)||0:0;
   if(document.getElementById("amt"))ui.amt=amt;
   if(a==="backup"){backupDatabase();return}
+  else if(a==="cloudsave"){cloudSave();return}
+  else if(a==="cloudout"){cloudSignOut();return}
   else if(a==="restore"){var rf=document.getElementById("restorefile");if(rf)rf.click();return}
   else if(a==="tab")ui.tab=x;
   else if(a==="setmod"){S.mod=b.dataset.n;var ss=ensureSession();ss.module=S.mod;var mm=findMod(S.mod);ss.al=mm?!!mm.al:ss.al}
@@ -295,6 +321,7 @@ app.onchange=function(e){
 };
 app.onsubmit=function(e){
   e.preventDefault();var f=e.target,k=f.dataset.form,v=function(n){return f.elements[n].value};
+  if(k==="cloud"){cloudSignIn(v("email").trim());return}
   if(k==="one"){var h=num(v("hp")),q=Math.max(1,num(v("qty"))||1),n=v("name").trim(),md=num(v("mod"))||0,t=v("t"),ini=num(v("init"));
     for(var x=1;x<=q;x++)S.cmb.push({id:++S.seq,t:t,name:q>1?n+" "+x:n,init:ini==null&&t==="m"?d20(md):ini,ac:num(v("ac")),hp:h,max:h,mod:md,conds:[]});ui.add=false;if(f.elements.save.checked)saveLib(n,num(v("ac")),h,md)}
   if(k==="char"){S.chars.push({id:++S.seq,player:v("player").trim(),name:v("name").trim(),className:v("className").trim(),species:v("species").trim(),level:num(v("level")),ac:num(v("ac")),max:num(v("hp")),pp:num(v("pp")),mod:num(v("mod"))||0,notes:""})}
@@ -330,8 +357,9 @@ function showFatal(e){
 }
 function boot(){
   try{
-    ui.tab="c";
+    ui.tab="home";
     render();
+    initCloud();
   }catch(e){showFatal(e);}
 }
 if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",function(){setTimeout(boot,0)});}else{setTimeout(boot,0);}
